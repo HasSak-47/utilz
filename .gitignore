@@ -3,9 +3,6 @@
 .nogit
 tmp
 
-document/*
-!document/*.tex
-!document/*.pdf
 
 testing/
 

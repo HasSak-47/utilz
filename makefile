@@ -1,11 +1,8 @@
-
-build_client:
-	@cd ./crates/client && cargo rustc -- -Awarnings && cargo build
+build:
+	@cargo build
 
 run:
 	@cargo run
 
-impl_util:
+release:
 	@cargo build --release
-	@mv target/release/project_manager_client ~/.cmd/project_manager
-
