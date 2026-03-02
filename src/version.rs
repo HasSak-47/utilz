@@ -209,55 +209,6 @@ impl<'de> Deserialize<'de> for Version {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Project {
-    pub version: Option<Version>,
-    pub edition: Version,
-
-    pub id: usize,
-    pub name: String,
-    pub description: String,
-    pub subprojects: Vec<Project>,
-    pub tasks: Vec<Task>,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Task {
-    pub name: String,
-    pub priority: f64,
-    pub difficulty: f64,
-}
-
-impl Project {
-    pub fn get_priority(&self) -> f64 {
-        let mut total = 0.;
-
-        for project in &self.tasks {
-            total += project.priority;
-        }
-
-        for project in &self.subprojects {
-            total += project.get_priority();
-        }
-
-        return total;
-    }
-
-    pub fn get_difficulty(&self) -> f64 {
-        let mut total = 0.;
-
-        for project in &self.tasks {
-            total += project.difficulty;
-        }
-
-        for project in &self.subprojects {
-            total += project.get_difficulty();
-        }
-
-        return total;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Version;

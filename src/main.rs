@@ -1,5 +1,7 @@
-pub mod db;
+pub mod dbs;
+pub mod interface;
 pub mod repr;
+pub mod version;
 
 use anyhow::Result;
 
