@@ -1,6 +1,9 @@
 use super::repr::*;
 
 use anyhow::{self, bail, ensure, Result};
+use serde::de::Error as DeError;
+use serde::ser::Error as SerError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug)]
 pub struct PathSegment {
@@ -35,11 +38,11 @@ impl PathSegment {
 Path: (project_name/)+(task_name)?
 */
 #[derive(Debug)]
-pub struct ProjectPath {
-    vec: Vec<PathSegment>,
+pub struct Path {
+    pub vec: Vec<PathSegment>,
 }
 
-impl TryFrom<&str> for ProjectPath {
+impl TryFrom<&str> for Path {
     type Error = anyhow::Error;
 
     fn try_from(value: &str) -> Result<Self> {
@@ -98,17 +101,21 @@ impl TryFrom<&str> for ProjectPath {
             vec.push(PathSegment::task(t.to_string()));
         }
 
-        return Ok(ProjectPath { vec });
+        return Ok(Path { vec });
     }
 }
 
-impl ProjectPath {
+impl Path {
     pub fn new() -> Self {
-        return ProjectPath { vec: Vec::new() };
+        return Path { vec: Vec::new() };
+    }
+
+    pub fn len(&self) -> usize {
+        return self.vec.len();
     }
 
     pub fn parse<S: AsRef<str>>(s: S) -> Result<Self> {
-        return ProjectPath::try_from(s.as_ref());
+        return Path::try_from(s.as_ref());
     }
 
     pub fn add_task(&mut self, name: String) -> Result<()> {
@@ -134,10 +141,114 @@ impl ProjectPath {
 
         Ok(())
     }
+
+    fn to_path_string(&self) -> Result<String> {
+        ensure!(!self.vec.is_empty(), "path has no segments");
+
+        let mut parts = Vec::with_capacity(self.vec.len());
+        for (i, segment) in self.vec.iter().enumerate() {
+            let is_last = i + 1 == self.vec.len();
+            if segment.is_task() && !is_last {
+                bail!("invalid path: task segment can only appear at the end");
+            }
+            parts.push(segment.name.as_str());
+        }
+
+        let mut s = parts.join("/");
+        if !self.vec.last().expect("checked non-empty").is_task() {
+            s.push('/');
+        }
+        Ok(s)
+    }
+
+    pub fn get_section_mut(&mut self, idx: usize) -> &mut PathSegment {
+        return &mut self.vec[idx];
+    }
+
+    pub fn get_section(&self, idx: usize) -> &PathSegment {
+        return &self.vec[idx];
+    }
 }
 
-trait ProjectStorage {
-    fn get_project(&self, path: ProjectPath) -> Result<Project>;
-    fn promote_task(&self, path: ProjectPath) -> Result<()>;
-    fn get_task(&self, path: ProjectPath) -> Result<Task>;
+impl Serialize for Path {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = self.to_path_string().map_err(SerError::custom)?;
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> Deserialize<'de> for Path {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Path::parse(s).map_err(D::Error::custom)
+    }
+}
+
+pub trait ProjectStorage {
+    fn get_project(&self, path: Path) -> Result<Project>;
+    fn promote_task(&self, path: Path) -> Result<()>;
+    fn get_task(&self, path: Path) -> Result<Task>;
+
+    fn commit_changes(&mut self);
+
+    fn create_project(&mut self, path: Path) -> Result<()>;
+    /* add todo task */
+    fn create_task(&mut self, path: Path) -> Result<()>;
+    /* makes task as done */
+    fn mark_done_task(&mut self, path: Path) -> Result<()>;
+    /* makes task as todo */
+    fn mark_todo_task(&mut self, path: Path) -> Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Path;
+
+    #[test]
+    fn path_deserializes_from_string() {
+        let path: Path = serde_json::from_str("\"root/sub/task\"").expect("valid path");
+        assert_eq!(
+            path.vec[0].get_name(),
+            "root",
+            "first part is not named root",
+        );
+        assert_eq!(
+            path.vec[1].get_name(),
+            "sub",
+            "first part is not named root",
+        );
+        assert_eq!(
+            path.vec[2].get_name(),
+            "task",
+            "first part is not named root",
+        );
+
+        assert!(!path.vec[0].is_task(), "first part is not project");
+        assert!(!path.vec[1].is_task(), "first part is not project");
+        assert!(path.vec[2].is_task(), "first part is not task");
+    }
+
+    #[test]
+    fn project_only_path_serializes_with_trailing_slash() {
+        let path = Path::parse("root/sub/").expect("valid project path");
+        assert_eq!(
+            path.vec[0].get_name(),
+            "root",
+            "first part is not named root",
+        );
+        assert_eq!(
+            path.vec[1].get_name(),
+            "sub",
+            "first part is not named root",
+        );
+
+        assert!(!path.vec[0].is_task(), "first part is not project");
+        assert!(!path.vec[1].is_task(), "first part is not project");
+    }
 }
