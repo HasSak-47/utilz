@@ -7,7 +7,11 @@ use crate::{
 use anyhow::{bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProjectHeader {
@@ -44,6 +48,16 @@ pub struct DB {
 }
 
 impl DB {
+    pub fn ensure_project(&self, path: &Path) -> Result<()> {
+        ensure!(
+            self.project.project.name == path.get_section(0).get_name(),
+            "you can only get a name the root project name"
+        );
+
+        ensure!(path.len() == 1, "subprojects are not handled yet...");
+
+        return Ok(());
+    }
     pub fn new(location: Location) -> Result<Self> {
         let string = match &location {
             Location::Local(path) => {
@@ -69,12 +83,7 @@ impl ProjectStorage for DB {
         bail!("promoting not available for toml database");
     }
     fn get_project(&self, path: crate::interface::Path) -> Result<crate::repr::Project> {
-        ensure!(
-            self.project.project.name == path.get_section(0).get_name(),
-            "you can only get a name the root project name"
-        );
-
-        ensure!(path.len() == 1, "subprojects are not handled yet...");
+        self.ensure_project(&path)?;
 
         return Ok(crate::repr::Project {
             version: self.project.project.version.clone(),
@@ -137,20 +146,76 @@ impl ProjectStorage for DB {
         });
     }
 
-    fn commit_changes(&mut self) {
-        todo!()
+    fn commit_changes(&mut self) -> Result<()> {
+        let path = if let Location::Local(path) = &self.location {
+            path
+        } else {
+            bail!("Cannot edit url data")
+        };
+
+        let mut file = File::create(path)?;
+        let buf = toml::to_string_pretty(&self.project)?;
+        file.write_all(buf.as_bytes())?;
+
+        return Ok(());
     }
 
     fn create_project(&mut self, path: crate::interface::Path) -> Result<()> {
-        todo!()
+        bail!("Creating project not available for Basic TOML DB")
     }
-    fn create_task(&mut self, path: crate::interface::Path) -> Result<()> {
-        todo!()
+
+    fn insert_task_done(
+        &mut self,
+        path: crate::interface::Path,
+        task: crate::repr::Task,
+    ) -> Result<()> {
+        self.ensure_project(&path)?;
+
+        self.project.done.insert(
+            task.name,
+            Task {
+                priority: task.priority,
+                difficulty: task.difficulty,
+            },
+        );
+        return Ok(());
+    }
+
+    fn insert_task_todo(
+        &mut self,
+        path: crate::interface::Path,
+        task: crate::repr::Task,
+    ) -> Result<()> {
+        self.ensure_project(&path)?;
+
+        self.project.todo.insert(
+            task.name,
+            Task {
+                priority: task.priority,
+                difficulty: task.difficulty,
+            },
+        );
+        return Ok(());
     }
     fn mark_done_task(&mut self, path: crate::interface::Path) -> Result<()> {
-        todo!()
+        self.ensure_project(&path)?;
+        let name = path.get_section(1).get_name();
+        let task = self.project.todo.remove(&name);
+        if let Some(s) = task {
+            self.project.done.insert(name, s);
+        }
+
+        return Ok(());
     }
+
     fn mark_todo_task(&mut self, path: crate::interface::Path) -> Result<()> {
-        todo!()
+        self.ensure_project(&path)?;
+        let name = path.get_section(1).get_name();
+        let task = self.project.todo.remove(&name);
+        if let Some(s) = task {
+            self.project.done.insert(name, s);
+        }
+
+        return Ok(());
     }
 }

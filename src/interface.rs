@@ -195,11 +195,12 @@ pub trait ProjectStorage {
     fn promote_task(&self, path: Path) -> Result<()>;
     fn get_task(&self, path: Path) -> Result<Task>;
 
-    fn commit_changes(&mut self);
+    fn commit_changes(&mut self) -> Result<()>;
 
     fn create_project(&mut self, path: Path) -> Result<()>;
     /* add todo task */
-    fn create_task(&mut self, path: Path) -> Result<()>;
+    fn insert_task_todo(&mut self, path: Path, task: Task) -> Result<()>;
+    fn insert_task_done(&mut self, path: Path, task: Task) -> Result<()>;
     /* makes task as done */
     fn mark_done_task(&mut self, path: Path) -> Result<()>;
     /* makes task as todo */
