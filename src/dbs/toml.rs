@@ -4,7 +4,7 @@ use crate::{
     version::Version,
 };
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 
 use std::{
@@ -41,13 +41,17 @@ pub struct Project {
     pub done: HashMap<String, Task>,
 }
 
+/**
+represents a file at location that contains a toml describing the project
+idealy it should be a status.toml at the root of the project dir
+*/
 #[derive(Debug, Serialize, Deserialize)]
-pub struct DB {
+pub struct StatusDB {
     pub project: Project,
     pub location: Location,
 }
 
-impl DB {
+impl StatusDB {
     pub fn ensure_project(&self, path: &Path) -> Result<()> {
         ensure!(
             self.project.project.name == path.get_section(0).get_name(),
@@ -58,6 +62,7 @@ impl DB {
 
         return Ok(());
     }
+
     pub fn new(location: Location) -> Result<Self> {
         let string = match &location {
             Location::Local(path) => {
@@ -71,18 +76,18 @@ impl DB {
 
         let project: Project = toml::from_str(string.as_str())?;
 
-        return Ok(DB {
+        return Ok(StatusDB {
             project: project,
             location: location,
         });
     }
 }
 
-impl ProjectStorage for DB {
-    fn promote_task(&self, _: crate::interface::Path) -> anyhow::Result<()> {
+impl ProjectStorage for StatusDB {
+    fn promote_task(&mut self, _: crate::interface::Path) -> anyhow::Result<()> {
         bail!("promoting not available for toml database");
     }
-    fn get_project(&self, path: crate::interface::Path) -> Result<crate::repr::Project> {
+    fn get_project(&mut self, path: crate::interface::Path) -> Result<crate::repr::Project> {
         self.ensure_project(&path)?;
 
         return Ok(crate::repr::Project {
@@ -116,7 +121,7 @@ impl ProjectStorage for DB {
         });
     }
 
-    fn get_task(&self, path: crate::interface::Path) -> Result<crate::repr::Task> {
+    fn get_task(&mut self, path: crate::interface::Path) -> Result<crate::repr::Task> {
         ensure!(
             self.project.project.name == path.get_section(0).get_name(),
             "you can only get a name the root project name"
@@ -160,7 +165,7 @@ impl ProjectStorage for DB {
         return Ok(());
     }
 
-    fn create_project(&mut self, path: crate::interface::Path) -> Result<()> {
+    fn create_project(&mut self, _: Path, _: repr::Project, _: Location) -> Result<()> {
         bail!("Creating project not available for Basic TOML DB")
     }
 
@@ -217,5 +222,72 @@ impl ProjectStorage for DB {
         }
 
         return Ok(());
+    }
+}
+
+#[derive(Debug)]
+struct StatusInstance {
+    location: Location,
+    db: Option<StatusDB>,
+}
+
+#[derive(Debug, Default)]
+struct StatusCluster {
+    instances: HashMap<Path, StatusInstance>,
+}
+
+use crate::repr;
+
+impl ProjectStorage for StatusCluster {
+    fn get_project(&mut self, path: Path) -> Result<repr::Project> {
+        let instance = self
+            .instances
+            .get_mut(&path)
+            .ok_or(anyhow!("could not find project"))?;
+
+        return if let Some(instance) = &mut instance.db {
+            instance
+        } else {
+            instance.db = Some(StatusDB::new(instance.location.clone())?);
+            instance.db.as_mut().unwrap()
+        }
+        .get_project(path);
+    }
+
+    fn promote_task(&mut self, path: Path) -> Result<()> {
+        todo!()
+    }
+
+    fn get_task(&mut self, path: Path) -> Result<repr::Task> {
+        todo!()
+    }
+
+    fn commit_changes(&mut self) -> Result<()> {
+        todo!()
+    }
+
+    fn create_project(
+        &mut self,
+        path: Path,
+        project: repr::Project,
+        location: Location,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    /* add todo task */
+    fn insert_task_todo(&mut self, path: Path, task: repr::Task) -> Result<()> {
+        todo!()
+    }
+    fn insert_task_done(&mut self, path: Path, task: repr::Task) -> Result<()> {
+        todo!()
+    }
+    /* makes task as done */
+    fn mark_done_task(&mut self, path: Path) -> Result<()> {
+        todo!()
+    }
+    /* makes task as todo */
+    fn mark_todo_task(&mut self, path: Path) -> Result<()> {
+        todo!()
     }
 }

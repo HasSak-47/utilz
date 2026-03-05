@@ -5,7 +5,7 @@ use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct PathSegment {
     name: String,
     is_task: bool,
@@ -37,7 +37,7 @@ impl PathSegment {
 /**
 Path: (project_name/)+(task_name)?
 */
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct Path {
     pub vec: Vec<PathSegment>,
 }
@@ -191,13 +191,13 @@ impl<'de> Deserialize<'de> for Path {
 }
 
 pub trait ProjectStorage {
-    fn get_project(&self, path: Path) -> Result<Project>;
-    fn promote_task(&self, path: Path) -> Result<()>;
-    fn get_task(&self, path: Path) -> Result<Task>;
+    fn get_project(&mut self, path: Path) -> Result<Project>;
+    fn promote_task(&mut self, path: Path) -> Result<()>;
+    fn get_task(&mut self, path: Path) -> Result<Task>;
 
     fn commit_changes(&mut self) -> Result<()>;
 
-    fn create_project(&mut self, path: Path) -> Result<()>;
+    fn create_project(&mut self, path: Path, project: Project, location: Location) -> Result<()>;
     /* add todo task */
     fn insert_task_todo(&mut self, path: Path, task: Task) -> Result<()>;
     fn insert_task_done(&mut self, path: Path, task: Task) -> Result<()>;
