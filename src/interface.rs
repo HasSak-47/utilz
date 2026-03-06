@@ -5,7 +5,7 @@ use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct PathSegment {
     name: String,
     is_task: bool,
@@ -37,7 +37,7 @@ impl PathSegment {
 /**
 Path: (project_name/)+(task_name)?
 */
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Path {
     pub vec: Vec<PathSegment>,
 }
