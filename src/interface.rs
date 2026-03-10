@@ -191,20 +191,23 @@ impl<'de> Deserialize<'de> for Path {
 }
 
 pub trait ProjectStorage {
-    fn get_projects_path(&mut self) -> Result<Path>;
+    fn get_projects_path(&mut self) -> Result<Vec<Path>>;
     fn get_project(&mut self, path: Path) -> Result<Project>;
     fn promote_task(&mut self, path: Path) -> Result<()>;
     fn get_task(&mut self, path: Path) -> Result<Task>;
 
+    /** saves data */
     fn commit_changes(&mut self) -> Result<()>;
 
+    /** creates or overrides project data */
     fn create_project(&mut self, path: Path, project: Project, location: Location) -> Result<()>;
-    /* add todo task */
+    /** add todo task */
     fn insert_task_todo(&mut self, path: Path, task: Task) -> Result<()>;
+    /** add done task */
     fn insert_task_done(&mut self, path: Path, task: Task) -> Result<()>;
-    /* makes task as done */
+    /** marks task as done */
     fn mark_done_task(&mut self, path: Path) -> Result<()>;
-    /* makes task as todo */
+    /** marks task as todo */
     fn mark_todo_task(&mut self, path: Path) -> Result<()>;
 }
 

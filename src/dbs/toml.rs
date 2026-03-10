@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use std::{
     collections::HashMap,
-    fs::File,
+    fs::{File, OpenOptions},
     io::{Read, Write},
     path::PathBuf,
 };
@@ -85,12 +85,12 @@ impl StatusDB {
 }
 
 impl ProjectStorage for StatusDB {
-    fn get_projects_path(&mut self) -> Result<Path> {
-        Ok(Path {
+    fn get_projects_path(&mut self) -> Result<Vec<Path>> {
+        return Ok(vec![Path {
             vec: vec![crate::interface::PathSegment::project(
                 self.project.project.name.clone(),
             )],
-        })
+        }]);
     }
 
     fn promote_task(&mut self, _: crate::interface::Path) -> anyhow::Result<()> {
@@ -253,6 +253,7 @@ pub struct StatusCluster {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct StatusClusterDB {
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     instances: HashMap<String, Location>,
 }
 
@@ -350,32 +351,18 @@ impl StatusCluster {
 }
 
 impl ProjectStorage for StatusCluster {
-    fn get_projects_path(&mut self) -> Result<Path> {
-        ensure!(
-            !self.instances.is_empty(),
-            "no project registered in status cluster"
-        );
+    fn get_projects_path(&mut self) -> Result<Vec<Path>> {
+        let mut projects = Vec::new();
 
-        let mut roots: Vec<String> = Vec::new();
         for path in self.instances.keys() {
             ensure!(
                 path.len() >= 1,
                 "instance path must contain at least one segment"
             );
-            let root = path.get_section(0).get_name();
-            if !roots.iter().any(|r| r == &root) {
-                roots.push(root);
-            }
+            projects.push(path.clone());
         }
 
-        ensure!(
-            roots.len() == 1,
-            "multiple root namespaces exist; cannot infer a single projects path"
-        );
-
-        Ok(Path {
-            vec: vec![crate::interface::PathSegment::project(roots.remove(0))],
-        })
+        return Ok(projects);
     }
 
     fn get_project(&mut self, path: Path) -> Result<repr::Project> {
@@ -400,6 +387,9 @@ impl ProjectStorage for StatusCluster {
         Ok(())
     }
 
+    /**
+    creates or overrides project data
+    */
     fn create_project(
         &mut self,
         path: Path,
