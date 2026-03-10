@@ -191,6 +191,7 @@ impl<'de> Deserialize<'de> for Path {
 }
 
 pub trait ProjectStorage {
+    fn get_projects_path(&mut self) -> Result<Path>;
     fn get_project(&mut self, path: Path) -> Result<Project>;
     fn promote_task(&mut self, path: Path) -> Result<()>;
     fn get_task(&mut self, path: Path) -> Result<Task>;

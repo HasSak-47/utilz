@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 
+use crate::interface::ProjectStorage;
+
 #[derive(Parser, Clone)]
 #[command(version, about, long_about = None)]
 struct CLI {
@@ -86,7 +88,12 @@ struct List {
 }
 
 impl List {
-    pub fn run(&self, opts: &Opts) {}
+    pub fn run(&self, opts: &Opts) -> Result<()> {
+        let mut db = crate::dbs::toml::StatusCluster::load(&opts.db_path)?;
+        let paths = db.get_projects_path()?;
+
+        return Ok(());
+    }
 }
 
 #[derive(Subcommand, Clone)]

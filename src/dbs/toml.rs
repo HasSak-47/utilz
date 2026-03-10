@@ -72,7 +72,7 @@ impl StatusDB {
                 file.read_to_string(&mut buf)?;
                 buf
             }
-            _ => todo!(),
+            Location::URL(_) => bail!("loading project data from URL is not supported yet"),
         };
 
         let project: Project = toml::from_str(string.as_str())?;
@@ -85,9 +85,18 @@ impl StatusDB {
 }
 
 impl ProjectStorage for StatusDB {
+    fn get_projects_path(&mut self) -> Result<Path> {
+        Ok(Path {
+            vec: vec![crate::interface::PathSegment::project(
+                self.project.project.name.clone(),
+            )],
+        })
+    }
+
     fn promote_task(&mut self, _: crate::interface::Path) -> anyhow::Result<()> {
         bail!("promoting not available for toml database");
     }
+
     fn get_project(&mut self, path: crate::interface::Path) -> Result<crate::repr::Project> {
         self.ensure_project(&path)?;
 
@@ -237,7 +246,7 @@ struct StatusInstance {
 keeps track of all the status.toml databases
 */
 #[derive(Debug, Default)]
-struct StatusCluster {
+pub struct StatusCluster {
     instances: HashMap<Path, StatusInstance>,
     db_path: PathBuf,
 }
@@ -300,14 +309,14 @@ impl StatusCluster {
         Ok(())
     }
 
-    pub fn load(path: PathBuf) -> Result<Self> {
+    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
         let mut file = File::open(&path)?;
         let mut buf = String::new();
 
         file.read_to_string(&mut buf)?;
         let data: StatusClusterDB = toml::from_str(buf.as_str())?;
         return Ok(Self {
-            db_path: path,
+            db_path: path.as_ref().to_path_buf(),
             instances: data
                 .instances
                 .iter()
@@ -341,6 +350,34 @@ impl StatusCluster {
 }
 
 impl ProjectStorage for StatusCluster {
+    fn get_projects_path(&mut self) -> Result<Path> {
+        ensure!(
+            !self.instances.is_empty(),
+            "no project registered in status cluster"
+        );
+
+        let mut roots: Vec<String> = Vec::new();
+        for path in self.instances.keys() {
+            ensure!(
+                path.len() >= 1,
+                "instance path must contain at least one segment"
+            );
+            let root = path.get_section(0).get_name();
+            if !roots.iter().any(|r| r == &root) {
+                roots.push(root);
+            }
+        }
+
+        ensure!(
+            roots.len() == 1,
+            "multiple root namespaces exist; cannot infer a single projects path"
+        );
+
+        Ok(Path {
+            vec: vec![crate::interface::PathSegment::project(roots.remove(0))],
+        })
+    }
+
     fn get_project(&mut self, path: Path) -> Result<repr::Project> {
         self.get_instance_db(&path)?.get_project(path)
     }
