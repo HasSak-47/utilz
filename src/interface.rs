@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use super::repr::*;
 
 use anyhow::{self, bail, ensure, Result};
@@ -40,6 +42,19 @@ Path: (project_name/)+(task_name)?
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Path {
     pub vec: Vec<PathSegment>,
+}
+
+impl Display for Path {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for segment in &self.vec {
+            if !segment.is_task {
+                write!(f, "{}/", segment.name)?;
+            } else {
+                write!(f, "{}", segment.name)?;
+            }
+        }
+        return Ok(());
+    }
 }
 
 impl TryFrom<&str> for Path {
@@ -118,7 +133,8 @@ impl Path {
         return Path::try_from(s.as_ref());
     }
 
-    pub fn add_task(&mut self, name: String) -> Result<()> {
+    pub fn add_task<S: Into<String>>(&mut self, name: S) -> Result<()> {
+        let name = name.into();
         if let Some(last) = self.vec.last_mut() {
             if last.is_task() {
                 anyhow::bail!("Path already at a task, cannot add a task")
@@ -140,6 +156,16 @@ impl Path {
         self.vec.push(PathSegment::project(name));
 
         Ok(())
+    }
+
+    pub fn remove_task(&mut self) -> Result<()> {
+        let last = self.vec.last().ok_or(anyhow::anyhow!("no task in path"))?;
+
+        if last.is_task {
+            self.vec.pop();
+        }
+
+        return Ok(());
     }
 
     fn to_path_string(&self) -> Result<String> {
@@ -191,6 +217,9 @@ impl<'de> Deserialize<'de> for Path {
 }
 
 pub trait ProjectStorage {
+    fn task_exists(&mut self, path: Path) -> Result<bool>;
+    fn project_exists(&mut self, path: Path) -> Result<bool>;
+
     fn get_projects_path(&mut self) -> Result<Vec<Path>>;
     fn get_project(&mut self, path: Path) -> Result<Project>;
     fn promote_task(&mut self, path: Path) -> Result<()>;

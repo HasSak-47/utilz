@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::File,
     io::{Read, Write},
     path::PathBuf,
 };
@@ -21,7 +21,7 @@ pub struct ProjectHeader {
     pub name: String,
     pub description: String,
 
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subprojects: Vec<Path>,
 }
 
@@ -35,10 +35,10 @@ pub struct Task {
 pub struct Project {
     pub project: ProjectHeader,
 
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub todo: HashMap<String, Task>,
 
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub done: HashMap<String, Task>,
 }
 
@@ -58,8 +58,6 @@ impl StatusDB {
             self.project.project.name == path.get_section(0).get_name(),
             "you can only get a name the root project name"
         );
-
-        ensure!(path.len() == 1, "subprojects are not handled yet...");
 
         return Ok(());
     }
@@ -85,6 +83,23 @@ impl StatusDB {
 }
 
 impl ProjectStorage for StatusDB {
+    fn project_exists(&mut self, path: Path) -> Result<bool> {
+        self.ensure_project(&path)?;
+        ensure!(path.len() == 1);
+
+        return Ok(path.get_section(0).get_name() == self.project.project.name);
+    }
+
+    fn task_exists(&mut self, path: Path) -> Result<bool> {
+        self.ensure_project(&path)?;
+
+        let name = path.get_section(1).get_name();
+        if self.project.todo.contains_key(&name) || self.project.todo.contains_key(&name) {
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
     fn get_projects_path(&mut self) -> Result<Vec<Path>> {
         return Ok(vec![Path {
             vec: vec![crate::interface::PathSegment::project(
@@ -351,6 +366,17 @@ impl StatusCluster {
 }
 
 impl ProjectStorage for StatusCluster {
+    fn project_exists(&mut self, path: Path) -> Result<bool> {
+        return Ok(self.get_instance_db(&path).is_ok());
+    }
+
+    fn task_exists(&mut self, path: Path) -> Result<bool> {
+        let mut project_path = path.clone();
+        project_path.remove_task()?;
+
+        self.get_instance_db(&project_path)?.task_exists(path)
+    }
+
     fn get_projects_path(&mut self) -> Result<Vec<Path>> {
         let mut projects = Vec::new();
 
@@ -384,12 +410,11 @@ impl ProjectStorage for StatusCluster {
             }
         }
 
+        self.save()?;
+
         Ok(())
     }
 
-    /**
-    creates or overrides project data
-    */
     fn create_project(
         &mut self,
         path: Path,
@@ -455,6 +480,7 @@ impl ProjectStorage for StatusCluster {
 
     /* add todo task */
     fn insert_task_todo(&mut self, path: Path, task: repr::Task) -> Result<()> {
+        log::debug!("inserting: {path}");
         self.get_instance_db(&path)?.insert_task_todo(path, task)
     }
     fn insert_task_done(&mut self, path: Path, task: repr::Task) -> Result<()> {

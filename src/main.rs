@@ -49,8 +49,7 @@ struct NewProject {
 }
 
 impl NewProject {
-    pub fn run(&self, opts: &Opts) -> Result<()> {
-        let mut db = crate::dbs::toml::StatusCluster::load(&opts.db_path)?;
+    pub fn run(&self, _: &Opts, storage: &mut Box<dyn ProjectStorage>) -> Result<()> {
         let mut path = Path::new();
         path.add_project(self.name.clone())?;
 
@@ -65,9 +64,8 @@ impl NewProject {
             bail!("project at {} already exists", location.display());
         }
 
-        db.create_project(path, project, repr::Location::Local(location))?;
-
-        db.save()?;
+        storage.create_project(path, project, repr::Location::Local(location))?;
+        storage.commit_changes()?;
 
         return Ok(());
     }
@@ -94,9 +92,39 @@ struct DeleteProject {
 struct AddTask {
     project: String,
     name: String,
-    todo: bool,
+    #[arg(short, long)]
+    done: bool,
     difficulty: f64,
     priority: f64,
+}
+
+impl AddTask {
+    pub fn run(&self, _: &Opts, storage: &mut Box<dyn ProjectStorage>) -> Result<()> {
+        let task = repr::Task {
+            name: self.name.clone(),
+            priority: self.priority,
+            difficulty: self.difficulty,
+        };
+
+        let project = self.project.clone() + if self.project.ends_with("/") { "" } else { "/" };
+
+        let path = Path::parse(&project)?;
+
+        let mut task_path = path.clone();
+        task_path.add_task(&self.name)?;
+
+        if storage.task_exists(task_path)? {
+            bail!("Task [{}]: already exist", self.name);
+        }
+
+        if self.done {
+            storage.insert_task_todo(path, task)?;
+        } else {
+            storage.insert_task_todo(path, task)?;
+        }
+        storage.commit_changes()?;
+        return Ok(());
+    }
 }
 
 #[derive(Parser, Clone)]
@@ -125,12 +153,48 @@ struct List {
 }
 
 impl List {
-    pub fn run(&self, opts: &Opts) -> Result<()> {
-        let mut db = crate::dbs::toml::StatusCluster::load(&opts.db_path)?;
-        let paths = db.get_projects_path()?;
-        println!("{}", paths.len());
-        for path in paths {
-            println!("{path:?}");
+    pub fn run(&self, _: &Opts, storage: &mut Box<dyn ProjectStorage>) -> Result<()> {
+        let paths = storage.get_projects_path()?;
+        let home_dir = dirs::home_dir();
+
+        if self.location {
+            for path in paths {
+                let project = storage.get_project(path.clone())?;
+                match project.location {
+                    Some(crate::repr::Location::Local(project_location)) => {
+                        let display_location = if let Some(home) = &home_dir {
+                            match project_location.strip_prefix(home) {
+                                Ok(relative) => {
+                                    if relative.as_os_str().is_empty() {
+                                        String::from("~")
+                                    } else {
+                                        PathBuf::from("~").join(relative).display().to_string()
+                                    }
+                                }
+                                Err(_) => project_location.display().to_string(),
+                            }
+                        } else {
+                            project_location.display().to_string()
+                        };
+
+                        if self.color {
+                            println!("{path} @ \x1b[1;34m{display_location}\x1b[0m");
+                        } else {
+                            println!("{path} @ {display_location}");
+                        }
+                    }
+                    Some(crate::repr::Location::URL(project_location)) => {
+                        println!("{path} @ {project_location}");
+                    }
+                    None => {
+                        println!("{path} @ <unknown>");
+                    }
+                }
+            }
+        } else {
+            for path in paths {
+                println!("{path}",);
+            }
         }
 
         return Ok(());
@@ -154,6 +218,13 @@ fn main() -> Result<()> {
     let cli = CLI::parse();
     let mut opts = cli.opts;
 
+    let mut builder = env_logger::builder();
+    if opts.debug {
+        builder.filter_level(log::LevelFilter::Debug);
+    }
+
+    builder.init();
+
     if let Err(e) = std::fs::create_dir(&opts.db_path) {
         match e.kind() {
             std::io::ErrorKind::AlreadyExists => {}
@@ -163,11 +234,17 @@ fn main() -> Result<()> {
 
     opts.db_path.push("projects");
     opts.db_path.set_extension("toml");
-    let _ = File::create(&opts.db_path);
+    if !std::fs::exists(&opts.db_path)? {
+        let _ = File::create(&opts.db_path);
+    }
+
+    let mut storage: Box<dyn ProjectStorage> =
+        Box::new(crate::dbs::toml::StatusCluster::load(&opts.db_path)?);
 
     match cli.command {
-        Commands::List(l) => l.run(&opts)?,
-        Commands::NewProject(new) => new.run(&opts)?,
+        Commands::List(l) => l.run(&opts, &mut storage)?,
+        Commands::NewProject(new) => new.run(&opts, &mut storage)?,
+        Commands::AddTask(task) => task.run(&opts, &mut storage)?,
         _ => todo!("Todo"),
     }
     return Ok(());

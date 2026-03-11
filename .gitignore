@@ -1,4 +1,5 @@
 # MINE
+status.toml
 *.bk
 .nogit
 tmp
