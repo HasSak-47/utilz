@@ -45,7 +45,44 @@ impl Default for Version {
 }
 
 impl Version {
-    fn to_version_string(&self) -> String {
+    pub fn compatible(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Version::Semantic { major: a_major, .. },
+                Version::Semantic { major: b_major, .. },
+            ) => a_major == b_major,
+
+            (
+                Version::Epoch {
+                    epoch: a_epoch,
+                    major: a_major,
+                    ..
+                },
+                Version::Epoch {
+                    epoch: b_epoch,
+                    major: b_major,
+                    ..
+                },
+            ) => a_epoch == b_epoch && a_major == b_major,
+
+            (
+                Version::Romantic {
+                    epoch: a_epoch,
+                    major: a_major,
+                    ..
+                },
+                Version::Romantic {
+                    epoch: b_epoch,
+                    major: b_major,
+                    ..
+                },
+            ) => a_epoch == b_epoch && a_major == b_major,
+
+            _ => false,
+        }
+    }
+
+    pub fn to_version_string(&self) -> String {
         let (base, pre, build) = match self {
             Version::Semantic {
                 major,
